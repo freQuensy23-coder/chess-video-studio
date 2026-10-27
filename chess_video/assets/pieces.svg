@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <g id="p" stroke-linejoin="round" stroke-linecap="round" stroke-width="2.7">
+      <circle cx="50" cy="29" r="12"/>
+      <path d="M42 41 Q44 57 34 69 L66 69 Q56 57 58 41 Z"/>
+      <path d="M33 69 L67 69 L71 77 L29 77 Z M28 78 L72 78 L75 86 L25 86 Z"/>
+      <path d="M43 25 Q47 20 52 22" fill="none" opacity=".38"/>
+    </g>
+    <g id="r" stroke-linejoin="round" stroke-linecap="round" stroke-width="2.7">
+      <path d="M27 17 L38 17 L38 27 L45 27 L45 17 L55 17 L55 27 L62 27 L62 17 L73 17 L71 39 L64 44 L65 68 L71 75 L29 75 L35 68 L36 44 L29 39 Z"/>
+      <path d="M28 76 L72 76 L76 86 L24 86 Z M36 44 L64 44 M35 67 L65 67 M32 34 L68 34"/>
+      <path d="M42 49 L42 62" fill="none" opacity=".4"/>
+    </g>
+    <g id="b" stroke-linejoin="round" stroke-linecap="round" stroke-width="2.7">
+      <circle cx="50" cy="14" r="4"/>
+      <path d="M50 18 C27 32 27 43 42 49 L41 59 L34 69 L66 69 L59 59 L58 49 C72 42 72 31 50 18 Z"/>
+      <path d="M54 25 L44 40 M39 51 L61 51 M36 59 L64 59" fill="none"/>
+      <path d="M32 70 L68 70 L73 78 L27 78 Z M27 79 L73 79 L76 87 L24 87 Z"/>
+    </g>
+    <g id="n" stroke-linejoin="round" stroke-linecap="round" stroke-width="2.7">
+      <path d="M30 70 C29 59 38 47 49 41 L35 45 L23 39 L28 27 L43 22 L45 12 L54 21 L64 18 C82 35 79 56 68 70 Z"/>
+      <path d="M55 24 C70 35 66 48 52 61 M29 34 L34 35 M44 26 L39 32" fill="none"/>
+      <circle cx="46" cy="30" r="2.4" stroke="none" fill="#9a805b"/>
+      <path d="M29 70 L70 70 L74 78 L26 78 Z M26 79 L74 79 L77 87 L23 87 Z"/>
+    </g>
+    <g id="q" stroke-linejoin="round" stroke-linecap="round" stroke-width="2.7">
+      <path d="M27 30 L38 41 L39 23 L50 39 L61 23 L62 41 L73 30 L66 57 L34 57 Z"/>
+      <circle cx="26" cy="25" r="4"/><circle cx="39" cy="19" r="4"/><circle cx="50" cy="15" r="4"/><circle cx="61" cy="19" r="4"/><circle cx="74" cy="25" r="4"/>
+      <path d="M34 57 L66 57 L62 66 L68 73 L32 73 L38 66 Z M30 74 L70 74 L74 82 L26 82 Z M25 83 L75 83 L77 89 L23 89 Z"/>
+      <path d="M38 50 L62 50 M38 63 L62 63" fill="none" opacity=".6"/>
+    </g>
+    <g id="k" stroke-linejoin="round" stroke-linecap="round" stroke-width="2.7">
+      <path d="M47 9 L53 9 L53 17 L61 17 L61 23 L53 23 L53 31 L47 31 L47 23 L39 23 L39 17 L47 17 Z"/>
+      <path d="M50 35 C28 19 18 42 34 54 L39 65 L33 73 L67 73 L61 65 L66 54 C82 42 72 19 50 35 Z"/>
+      <path d="M35 55 Q50 49 65 55 M39 64 L61 64" fill="none"/>
+      <path d="M31 74 L69 74 L74 82 L26 82 Z M25 83 L75 83 L77 89 L23 89 Z"/>
+    </g>
+  </defs>
+</svg>

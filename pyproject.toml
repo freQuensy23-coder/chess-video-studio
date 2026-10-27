@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chess-video-studio"
+version = "0.1.0"
+description = "PGN-to-video commentary with synchronized chess animations and ElevenLabs speech"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+authors = [{name = "Alexey Mametyev"}]
+dependencies = [
+  "python-chess>=1.999",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+  "httpx>=0.28,<1",
+  "python-dotenv>=1.0,<2",
+  "Pillow>=11,<13",
+  "CairoSVG>=2.7,<3",
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
+  "google-auth>=2.38,<3",
+  "requests>=2.32,<3"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<10", "ruff>=0.11,<1"]
+
+[project.scripts]
+chess-video = "chess_video.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["chess_video"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["chess_video"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
