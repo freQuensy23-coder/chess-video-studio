@@ -2,7 +2,6 @@ import chess
 
 from .game import validate_game
 
-
 PIECE_VALUES = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3,
                 chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 10}
 MAX_THREATS = 4

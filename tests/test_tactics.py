@@ -9,7 +9,6 @@ import pytest
 from chess_video.game import load_game
 from chess_video.tactics import select_key_threats
 
-
 FIXTURE = Path(__file__).parents[1] / 'examples' / 'bishop-trap.pgn'
 
 
