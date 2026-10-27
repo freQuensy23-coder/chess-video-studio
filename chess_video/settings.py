@@ -22,10 +22,11 @@ class Settings(BaseSettings):
     llm_thinking_level: Literal['low', 'high'] = 'high'
     language: Literal['en', 'ru'] = 'en'
     perspective: Literal['white', 'black'] = 'white'
+    presenter: Literal['male', 'female'] = 'male'
     vertex_project: str | None = None
     vertex_location: str = 'global'
     elevenlabs_api_key: SecretStr | None = None
-    elevenlabs_voice_id: str = 'pNInz6obpgDQGcFmaJgB'
+    elevenlabs_voice_id: str | None = None
     elevenlabs_model_id: Literal['eleven_multilingual_v2', 'eleven_v3'] = 'eleven_multilingual_v2'
     elevenlabs_stability: float = Field(default=0.4, ge=0, le=1)
     elevenlabs_similarity_boost: float = Field(default=0.75, ge=0, le=1)
@@ -47,6 +48,15 @@ class Settings(BaseSettings):
     stockfish_path: str | None = None
     api_token: SecretStr | None = Field(default=None, validation_alias=AliasChoices('CHESS_VIDEO_API_TOKEN', 'API_TOKEN', 'api_token'))
     job_root: Path = Field(default=Path('.jobs'), validation_alias=AliasChoices('CHESS_VIDEO_JOB_ROOT', 'JOB_ROOT', 'job_root'))
+
+    @property
+    def resolved_voice_id(self) -> str:
+        if self.presenter not in ('male', 'female'):
+            raise ValueError('Presenter must be male or female')
+        if self.elevenlabs_voice_id is not None:
+            self.validate_identifier(self.elevenlabs_voice_id)
+            return self.elevenlabs_voice_id
+        return 'cgSgspJ2msm6clMCkdW9' if self.presenter == 'female' else 'pNInz6obpgDQGcFmaJgB'
 
     @field_validator('llm_base_url')
     @classmethod

@@ -44,7 +44,9 @@ def _add_threat_events(game, perspective, events, moves, clear_times, initial_st
         events.extend({'kind': 'highlight', 'square': square, **metadata} for square in threat['focus_squares'])
 
 
-def compile_timeline(game, script, speech, width=608, height=1080, fps=30) -> dict:
+def compile_timeline(game, script, speech, width=608, height=1080, fps=30, *, presenter='male') -> dict:
+    if presenter not in ('male', 'female'):
+        raise ValueError('Presenter must be male or female')
     validate_video_options(width, height, fps)
     script = validate_script(game, script)
     speech = validate_speech(script, speech)
@@ -115,6 +117,7 @@ def compile_timeline(game, script, speech, width=608, height=1080, fps=30) -> di
     events.sort(key=lambda event: (event['start'], PRIORITY[event['kind']]))
     return {
         'version': 1, 'width': width, 'height': height, 'fps': fps, 'duration': duration,
+        'presenter': presenter,
         'audio_path': speech['audio_path'], 'initial_fen': game['initial_fen'],
         'game_result': game['result'], 'language': script['language'],
         'orientation': script['perspective'], 'player_color': script['perspective'],

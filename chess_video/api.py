@@ -8,12 +8,12 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Callable
+from typing import Annotated, Callable, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from chess_video.pipeline import generate_video, write_json
 from chess_video.settings import Settings
@@ -26,6 +26,13 @@ class JobRequest(BaseModel):
     width: int = Field(default=608, ge=320, le=2160)
     height: int = Field(default=1080, ge=480, le=3840)
     fps: int = Field(default=30, ge=12, le=60)
+    presenter: Literal['male', 'female'] | None = None
+    voice_id: str | None = None
+
+    @field_validator('voice_id')
+    @classmethod
+    def valid_voice_id(cls, value: str | None) -> str | None:
+        return Settings.validate_identifier(value)
 
     @model_validator(mode="after")
     def valid_video_shape(self):
@@ -74,10 +81,16 @@ def create_app(
                 directory = root / job_id
                 request = json.loads((directory / "request.json").read_text(encoding="utf-8"))
                 options = JobRequest.model_validate(request)
+                overrides = {}
+                if options.presenter is not None:
+                    overrides['presenter'] = options.presenter
+                if options.voice_id is not None:
+                    overrides['elevenlabs_voice_id'] = options.voice_id
+                job_settings = effective_settings.model_copy(update=overrides)
                 result = pipeline(
                     pgn=options.pgn,
                     output_dir=directory,
-                    settings=effective_settings,
+                    settings=job_settings,
                     width=options.width,
                     height=options.height,
                     fps=options.fps,

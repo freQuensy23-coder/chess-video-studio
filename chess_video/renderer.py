@@ -122,15 +122,24 @@ def _wood_board(side: int, orientation: str) -> Image.Image:
     return image.convert("RGBA")
 
 
-@lru_cache(maxsize=1)
-def _face_base() -> Image.Image:
-    png = cairosvg.svg2png(url=str(_ASSETS / "face.svg"), output_width=600, output_height=480)
+def _validate_presenter(value: Any) -> str:
+    if not isinstance(value, str) or value not in {"male", "female"}:
+        raise ValueError("presenter must be male or female")
+    return value
+
+
+@lru_cache(maxsize=2)
+def _face_base(presenter: str = "male") -> Image.Image:
+    presenter = _validate_presenter(presenter)
+    asset = "face-female.svg" if presenter == "female" else "face.svg"
+    png = cairosvg.svg2png(url=str(_ASSETS / asset), output_width=600, output_height=480)
     return Image.open(io.BytesIO(png)).convert("RGBA")
 
 
 @lru_cache(maxsize=96)
-def _face(emotion: str, blink: bool, mouth: int, width: int, height: int) -> Image.Image:
-    image = _face_base().copy()
+def _face(emotion: str, blink: bool, mouth: int, width: int, height: int, presenter: str = "male") -> Image.Image:
+    image = _face_base(presenter).copy()
+    female = presenter == "female"
     draw = ImageDraw.Draw(image)
     ink = (65, 48, 49)
     for cx in (264, 338):
@@ -142,6 +151,9 @@ def _face(emotion: str, blink: bool, mouth: int, width: int, height: int) -> Ima
             pupil_x = cx + (4 if emotion == "thinking" else 0)
             draw.ellipse((pupil_x - 5, 218, pupil_x + 5, 230), fill=(44, 51, 62))
             draw.ellipse((pupil_x - 3, 218, pupil_x, 221), fill="white")
+            if female:
+                outer = cx - 12 if cx == 264 else cx + 12
+                draw.line((outer, 219, outer + (-5 if cx == 264 else 5), 216), fill=ink, width=2)
     if emotion == "worried":
         brows = [(248, 204, 278, 195), (324, 195, 355, 204)]
     elif emotion == "thinking":
@@ -150,10 +162,35 @@ def _face(emotion: str, blink: bool, mouth: int, width: int, height: int) -> Ima
         brows = [(248, 190, 278, 188), (324, 188, 355, 190)]
     else:
         brows = [(248, 203, 278, 201), (324, 201, 355, 203)]
+    if female:
+        brows = {
+            "worried": [(248, 205, 278, 194), (324, 194, 355, 205)],
+            "thinking": [(248, 193, 278, 198), (324, 204, 355, 207)],
+            "surprised": [(248, 190, 278, 186), (324, 186, 355, 190)],
+            "happy": [(248, 198, 278, 195), (324, 195, 355, 198)],
+        }.get(emotion, [(248, 202, 278, 199), (324, 199, 355, 202)])
     for brow in brows:
-        draw.line(brow, fill=(84, 53, 42), width=5)
+        draw.line(brow, fill=(84, 53, 42), width=3 if female else 5)
     opening = mouth * 2.8
-    if emotion == "surprised":
+    if female:
+        lips = (165, 70, 88)
+        if emotion == "surprised":
+            draw.ellipse((287, 277, 314, 290 + max(18, opening)), fill=(83, 42, 46), outline=lips, width=3)
+        elif emotion == "happy":
+            draw.rounded_rectangle((278, 279, 323, 294 + max(5, opening)), radius=13, fill=(88, 43, 46), outline=lips, width=2)
+            draw.rounded_rectangle((282, 280, 319, 288), radius=3, fill=(255, 249, 229))
+            draw.arc((273, 266, 328, 305), 5, 175, fill=lips, width=3)
+        elif opening > 3:
+            draw.ellipse((283, 281, 319, 288 + opening), fill=(91, 44, 47), outline=lips, width=3)
+            draw.arc((286, 288, 317, 292 + opening), 0, 180, fill=(224, 124, 137), width=4)
+        elif emotion == "worried":
+            draw.arc((283, 283, 320, 307), 195, 345, fill=lips, width=4)
+        elif emotion == "thinking":
+            draw.line((286, 290, 316, 286), fill=lips, width=4)
+        else:
+            draw.arc((282, 275, 321, 295), 10, 170, fill=lips, width=4)
+            draw.line((295, 288, 307, 288), fill=(208, 110, 126), width=2)
+    elif emotion == "surprised":
         opening = max(18, opening)
         draw.ellipse((286, 278, 315, 290 + opening), fill=(83, 42, 46), outline=(169, 93, 77), width=3)
     elif emotion == "happy":
@@ -176,6 +213,7 @@ class Renderer:
     def __init__(self, timeline: dict):
         if not isinstance(timeline, dict):
             raise TypeError("timeline must be a dictionary")
+        self.presenter = _validate_presenter(timeline.get("presenter", "male"))
         self.timeline = copy.deepcopy(timeline)
         if timeline.get("version", 1) != 1:
             raise ValueError("Unsupported timeline version")
@@ -829,7 +867,7 @@ class Renderer:
         height = self.height - self.face_y
         blink_phase = (time + 0.7) % 4.3
         blink = blink_phase < 0.13 or 2.18 < blink_phase < 2.25
-        face = _face(self._emotion(time), blink, self._mouth(time), self.width, height)
+        face = _face(self._emotion(time), blink, self._mouth(time), self.width, height, presenter=self.presenter)
         reaction = self._reaction(time)
         if reaction:
             scale = 1 + 0.25 * reaction
@@ -926,6 +964,8 @@ def _cached_renderer(serialized: str) -> Renderer:
 
 
 def render_frame(timeline: dict, time: float) -> Image.Image:
+    if isinstance(timeline, dict):
+        _validate_presenter(timeline.get("presenter", "male"))
     return _cached_renderer(json.dumps(timeline, sort_keys=True, allow_nan=False)).frame(time)
 
 
@@ -978,11 +1018,11 @@ def _encode(renderer: Renderer, output: Path) -> None:
 
 
 def render_video(timeline: dict, output_path: str | Path) -> Path:
-    output = Path(output_path).expanduser().resolve()
-    output.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
     try:
         with Renderer(timeline) as renderer:
+            output = Path(output_path).expanduser().resolve()
+            output.parent.mkdir(parents=True, exist_ok=True)
             descriptor, name = tempfile.mkstemp(prefix=f".{output.stem}-", suffix=".mp4", dir=output.parent)
             os.close(descriptor)
             temporary = Path(name)
@@ -1024,7 +1064,8 @@ def _showcase_sound(path: Path, duration: float, section: int) -> None:
         audio.writeframes(samples.tobytes())
 
 
-def write_showcase(output_path: str | Path, *, width: int = 608, height: int = 1080, fps: int = 30) -> Path:
+def write_showcase(output_path: str | Path, *, width: int = 608, height: int = 1080, fps: int = 30, presenter: str = "male") -> Path:
+    presenter = _validate_presenter(presenter)
     output = Path(output_path).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     scenarios = [
@@ -1072,7 +1113,7 @@ def write_showcase(output_path: str | Path, *, width: int = 608, height: int = 1
                     ])
                 audio = workspace / f"sound-{index}.wav"
                 _showcase_sound(audio, duration, index)
-                data = {"version": 1, "width": width, "height": height, "fps": fps, "duration": duration, "audio_path": str(audio), "initial_fen": fen, "orientation": orientation, "title": "Original animation catalogue", "events": events}
+                data = {"version": 1, "width": width, "height": height, "fps": fps, "duration": duration, "audio_path": str(audio), "initial_fen": fen, "orientation": orientation, "presenter": presenter, "title": "Original animation catalogue", "events": events}
                 segment = workspace / f"segment-{index}.mp4"
                 render_video(data, segment)
                 segments.append(segment)
