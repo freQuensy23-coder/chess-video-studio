@@ -399,7 +399,10 @@ class Renderer:
 
     def result_at(self, time: float) -> str | None:
         board = self.board_at(time)
-        active = [event for event in self.events if event["kind"] == "result" and event["start"] <= time <= event["end"]]
+        results = [event for event in self.events if event["kind"] == "result"]
+        active = [event for event in results if event["start"] <= time < event["end"]]
+        if results and not active:
+            return None
         label = str(active[-1].get("label", "")) if active else ""
         russian = self.timeline.get("language") == "ru" or bool(re.search("[А-Яа-яЁё]", label))
         if board.is_checkmate():
