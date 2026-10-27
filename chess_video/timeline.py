@@ -2,6 +2,7 @@ import math
 
 from .game import validate_script
 from .models import validate_speech
+from .tactics import select_key_threats
 from .video_options import validate_video_options
 
 MOVE_DURATION = 0.35
@@ -18,6 +19,29 @@ def _result_label(game, language):
     if language == 'ru':
         return 'Белые победили' if game['result'] == '1-0' else 'Чёрные победили'
     return 'White wins' if game['result'] == '1-0' else 'Black wins'
+
+
+def _add_threat_events(game, perspective, events, moves, clear_times, initial_start, duration):
+    moves_by_ply = {move['ply']: move for move in moves}
+    for threat in select_key_threats(game, perspective):
+        ply = threat['ply']
+        completed = moves_by_ply[ply]['end'] if ply else initial_start
+        start = completed + 0.08 if ply else completed
+        next_move = next((move['start'] for move in moves if move['ply'] > ply), duration)
+        reset = min([next_move] + [time for time in clear_times if time >= completed])
+        end = min(start + 2.5, reset, duration)
+        if end - start < 1.0:
+            continue
+        pairs = {(arrow['from_square'], arrow['to_square']) for arrow in threat['arrows']}
+        events[:] = [event for event in events
+                     if not (event['kind'] == 'arrow'
+                             and (event['from_square'], event['to_square']) in pairs
+                             and event['start'] < end and event['end'] > start)]
+        metadata = {'start': start, 'end': end, 'color': '#ef7858', 'automatic': True,
+                    'tactical_group': f'opponent-threat-{ply}', 'focus_squares': threat['focus_squares'],
+                    'ply': ply}
+        events.extend({'kind': 'arrow', **arrow, **metadata} for arrow in threat['arrows'])
+        events.extend({'kind': 'highlight', 'square': square, **metadata} for square in threat['focus_squares'])
 
 
 def compile_timeline(game, script, speech, width=608, height=1080, fps=30) -> dict:
@@ -86,10 +110,13 @@ def compile_timeline(game, script, speech, width=608, height=1080, fps=30) -> di
         result_start = max(last_move_end, spoken_end)
         events.append({'kind': 'result', 'start': result_start, 'end': duration,
                        'label': _result_label(game, script['language'])})
+    _add_threat_events(game, script['perspective'], events, moves, clear_times,
+                       aligned_start(0, None), duration)
     events.sort(key=lambda event: (event['start'], PRIORITY[event['kind']]))
     return {
         'version': 1, 'width': width, 'height': height, 'fps': fps, 'duration': duration,
         'audio_path': speech['audio_path'], 'initial_fen': game['initial_fen'],
         'game_result': game['result'], 'language': script['language'],
-        'orientation': script['perspective'], 'title': script['title'], 'events': events,
+        'orientation': script['perspective'], 'player_color': script['perspective'],
+        'title': script['title'], 'events': events,
     }

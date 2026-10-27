@@ -50,7 +50,12 @@ actual legal board evidence and, for engine evaluations or forced lines, supplie
 evidence express uncertainty or an intention, not objective superiority. Checkmate requires is_checkmate=true;
 a result announcement requires the actual final result. Never describe a future move as already played.
 Conditional plans and uncertainty are encouraged: explain real threats and alternatives, using legal board/engine evidence.
-For medium games use 4-8 purposeful cues across the story, including arrows and at least one focus zoom.
+For medium games use 4-8 purposeful cues across the story, but no mandatory zoom quota: at most two
+camera focus cues for genuinely important moments, with long stable full-board stretches between them.
+Selected opponent threats are supplied as board-verified relations in selected_opponent_threats. React at
+that exact ply, never before. The renderer shows those attack arrows automatically; do not duplicate them.
+A fork is one attacker threatening multiple targets: explain both when useful, without claiming a forced win.
+Prefer a few decisive opponent threats and meaningful own plans over decorative arrows or repeated zooms.
 Open with a concrete immediate concern when supported; include a longer thinking beat about a genuine choice.
 At the actual final mate, explain a relevant escape-square control or blocked flight square when clearly supported.
 Plan useful visual teaching cues sparingly: arrows for a real discussed relation between squares, highlights
@@ -453,6 +458,20 @@ def _review_pending(pending: Path, settings: Settings, provider: str) -> None:
     os.replace(pending, pending.with_name(f'operator-retry-{sequence}.json'))
 
 
+def _script_context(game: dict, settings: Settings) -> dict:
+    from chess_video.tactics import select_key_threats
+
+    return {
+        'language': settings.language, 'perspective': settings.perspective,
+        'max_speech_characters': settings.max_speech_characters,
+        'required_beat_count': len(game['positions']),
+        'required_ply_sequence': list(range(len(game['positions']))),
+        'initial_beat': 'ply 0 describes the untouched starting board; the first actual move is ply 1',
+        'selected_opponent_threats': select_key_threats(game, settings.perspective),
+        'game': game,
+    }
+
+
 def generate_script(game: dict, settings: Settings) -> dict:
     from chess_video.game import validate_game
 
@@ -462,12 +481,13 @@ def generate_script(game: dict, settings: Settings) -> dict:
         raise ProviderError('Game validation failed; no paid LLM request sent') from None
     config = _llm_config(settings)
     try:
-        game_text = _canonical(game)
+        context = _script_context(game, settings)
+        game_text = _canonical(context)
     except (ValueError, TypeError):
         raise ProviderError('Game must be finite, JSON-serializable data') from None
     if len(game_text) > settings.llm_max_input_characters:
         raise ProviderError('Game exceeds configured LLM input character budget')
-    directory = settings.cache_dir / 'llm' / _digest({'game': game, 'config': config})
+    directory = settings.cache_dir / 'llm' / _digest({'context': context, 'config': config})
     with _cache_lock(directory):
         cached = directory / 'script.json'
         if cached.exists():
@@ -483,14 +503,7 @@ def generate_script(game: dict, settings: Settings) -> dict:
             raise ProviderError('Previous LLM generation failed validation; review private responses before explicitly requesting another paid generation')
         url, headers = _llm_endpoint(settings)
         secrets = _secrets(settings) + [value.removeprefix('Bearer ') for value in headers.values()]
-        messages = [{'role': 'user', 'content': _canonical({
-            'language': settings.language, 'perspective': settings.perspective,
-            'max_speech_characters': settings.max_speech_characters,
-            'required_beat_count': len(game['positions']),
-            'required_ply_sequence': list(range(len(game['positions']))),
-            'initial_beat': 'ply 0 describes the untouched starting board; the first actual move is ply 1',
-            'game': game,
-        })}]
+        messages = [{'role': 'user', 'content': game_text}]
         with _http_client(settings) as client:
             for attempt in range(settings.llm_max_repairs + 1):
                 _write_json(pending, {'provider': settings.llm_provider, 'attempt': attempt, 'status': 'request_in_progress'})

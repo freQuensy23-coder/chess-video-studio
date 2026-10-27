@@ -187,6 +187,10 @@ class Renderer:
         self.orientation = timeline.get("orientation", "white")
         if self.orientation not in {"white", "black"}:
             raise ValueError("orientation must be white or black")
+        player_color = timeline.get("player_color", self.orientation)
+        if not isinstance(player_color, str) or player_color not in {"white", "black"}:
+            raise ValueError("player_color must be white or black")
+        self.player_color = chess.WHITE if player_color == "white" else chess.BLACK
         try:
             self.initial = chess.Board(timeline.get("initial_fen", chess.STARTING_FEN))
         except (TypeError, ValueError) as error:
@@ -207,6 +211,7 @@ class Renderer:
         self.move_ends = [event["end"] for event in self.moves]
         self._validate_moves()
         self._validate_results()
+        self._camera_sequences = self._make_camera_sequences()
         self._cursor_keys = self._make_cursor_keys()
         self._cursor_times = [item[0] for item in self._cursor_keys]
         self._static = Image.new("RGBA", (self.width, self.panel_height), (23, 30, 41, 255))
@@ -376,6 +381,9 @@ class Renderer:
     def legal_destinations(self, square: str, time: float) -> list[str]:
         board = self.board_at(time)
         source = chess.parse_square(square)
+        piece = board.piece_at(source)
+        if board.turn != self.player_color or piece is None or piece.color != self.player_color:
+            return []
         return sorted({chess.square_name(move.to_square) for move in board.legal_moves if move.from_square == source})
 
     def annotations_at(self, time: float) -> list[dict]:
@@ -391,7 +399,7 @@ class Renderer:
 
     def promotion_choices_at(self, time: float) -> tuple[str, ...]:
         event = self._active_move(time)
-        if event and event["_move"].promotion:
+        if event and self._is_player_move(event) and event["_move"].promotion:
             progress = (time - event["start"]) / (event["end"] - event["start"])
             if progress >= 0.63:
                 return "q", "r", "b", "n"
@@ -425,14 +433,20 @@ class Renderer:
             return "DRAW · " + ("STALEMATE" if board.is_stalemate() else "GAME OVER")
         return None
 
+    def _is_player_move(self, event: dict) -> bool:
+        return event["_piece"].color == self.player_color
+
     def _make_cursor_keys(self) -> list[tuple[float, tuple[float, float]]]:
         actions = []
         previous_end = 0.0
         for event in self.moves:
+            approach = max(previous_end, event["start"] - 0.4)
+            previous_end = event["end"]
+            if not self._is_player_move(event):
+                continue
             duration = event["end"] - event["start"]
             a = self.square_center(event["_move"].from_square)
             b = self.square_center(event["_move"].to_square)
-            approach = max(previous_end, event["start"] - 0.4)
             contact = max(approach, event["start"] - 0.08)
             points = []
             if contact > approach:
@@ -447,14 +461,17 @@ class Renderer:
             else:
                 points.append((event["end"], b))
             actions.append({"approach": approach, "end": event["end"], "event": event, "keys": points})
-            previous_end = event["end"]
         self._cursor_strokes: list[dict] = []
         for event in self.events:
             kind = event["kind"]
             if kind not in _ANNOTATIONS | {"cursor"}:
                 continue
+            if event.get("automatic"):
+                continue
             start = event["start"]
             if kind == "cursor":
+                if not self.legal_destinations(event["square"], start):
+                    continue
                 draw_end = min(event["end"], start + 0.4)
                 approach, end = start, draw_end
                 points = [(draw_end, self.square_center(event["square"]))]
@@ -472,12 +489,15 @@ class Renderer:
                 points = [(start, a), (draw_end, b), (end, b)]
             if end <= approach or any(approach < action["end"] and end > action["approach"] for action in actions):
                 continue
+            if any(approach < move["end"] and end > move["start"] for move in self.moves):
+                continue
             action = {"approach": approach, "start": start, "draw_end": draw_end, "end": end, "event": event, "keys": points}
             actions.append(action)
             if kind in _ANNOTATIONS:
                 self._cursor_strokes.append(action)
         actions.sort(key=lambda action: (action["approach"], action["event"]["_order"]))
-        source = self.moves[0]["_move"].from_square if self.moves else chess.D4
+        self._cursor_cues = [action["event"] for action in actions if action["event"]["kind"] == "cursor"]
+        source = next((event["_move"].from_square for event in self.moves if self._is_player_move(event)), chess.D4)
         initial = self.square_center(source)
         if actions and actions[0]["keys"][0][0] == 0:
             initial = actions[0]["keys"][0][1]
@@ -525,12 +545,19 @@ class Renderer:
         return None
 
     def _selection(self, time: float) -> str | None:
+        board = self.board_at(time)
+        if board.turn != self.player_color:
+            return None
         for event in self.moves:
+            if not self._is_player_move(event):
+                continue
             duration = event["end"] - event["start"]
-            if max(0, event["start"] - 0.3) <= time < event["start"] + duration * 0.38:
+            if event["start"] <= time < event["start"] + duration * 0.38:
                 return chess.square_name(event["_move"].from_square)
-        active = [event for event in self.events if event["kind"] == "cursor" and event["start"] <= time < event["end"]]
-        return active[-1]["square"] if active else None
+        active = [event for event in self._cursor_cues if event["start"] <= time < event["end"]]
+        if active and self.legal_destinations(active[-1]["square"], time):
+            return active[-1]["square"]
+        return None
 
     def _position_layer(self, board: chess.Board) -> Image.Image:
         key = board.board_fen()
@@ -560,8 +587,11 @@ class Renderer:
         move = event["_move"]
         progress = (time - event["start"]) / (event["end"] - event["start"])
         board.remove_piece_at(move.from_square)
-        travel_end = 0.63 if move.promotion else 0.82
-        drag = _smooth((progress - 0.18) / (travel_end - 0.18))
+        player_move = self._is_player_move(event)
+        travel_start = 0.18 if player_move else 0.0
+        travel_end = (0.63 if move.promotion else 0.82) if player_move else 0.9
+        travel = (progress - travel_start) / (travel_end - travel_start)
+        drag = _smooth(travel)
         if event["_capture"] and drag >= 0.75:
             captured = move.to_square - (8 if event["_piece"].color else -8) if event["_ep"] else move.to_square
             board.remove_piece_at(captured)
@@ -575,12 +605,14 @@ class Renderer:
             rook_data = (rook_from, rook_to, rook)
         panel.alpha_composite(self._position_layer(board))
         a, b = self.square_center(move.from_square), self.square_center(move.to_square)
-        point = _motion(a, b, (progress - 0.18) / (travel_end - 0.18))
-        self._put_piece(panel, event["_piece"].symbol(), point, 0.18 < progress < travel_end)
+        point = _motion(a, b, travel, 0.06 if player_move else 0)
+        piece = chess.Piece(move.promotion, event["_piece"].color) if move.promotion and not player_move and progress >= travel_end else event["_piece"]
+        self._put_piece(panel, piece.symbol(), point, player_move and travel_start < progress < travel_end)
         if rook_data and rook_data[2]:
             rook_from, rook_to, rook = rook_data
-            point = _motion(self.square_center(rook_from), self.square_center(rook_to), (progress - 0.2) / 0.64, -0.04)
-            self._put_piece(panel, rook.symbol(), point, progress < 0.84)
+            rook_travel = (progress - 0.2) / 0.64 if player_move else travel
+            point = _motion(self.square_center(rook_from), self.square_center(rook_to), rook_travel, -0.04 if player_move else 0)
+            self._put_piece(panel, rook.symbol(), point, player_move and 0.2 < progress < 0.84)
         if self.promotion_choices_at(time):
             self._promotion_menu(panel, event, progress)
 
@@ -659,25 +691,69 @@ class Renderer:
         label = str(event.get("label", "!!"))[:6]
         draw.text((x, y), label, anchor="mm", font=_font(round(self.cell * 0.245), True), fill=(13, 42, 53, 255))
 
-    def _zoom(self, time: float) -> tuple[float, tuple[float, float]]:
-        active = [event for event in self.events if event["kind"] == "zoom" and event["start"] <= time < event["end"]]
-        if active:
-            event = active[-1]
-            ramp = min(0.36, (event["end"] - event["start"]) * 0.27)
-            amount = min(_smooth((time - event["start"]) / max(0.001, ramp)), _smooth((event["end"] - time) / max(0.001, ramp)))
-            return 1 + (event["scale"] - 1) * amount, self.square_center(event["square"])
-        center = (self.width / 2, self.panel_height / 2)
-        intro_scale = 1 + 0.45 * (1 - _smooth(time))
+    def _make_camera_sequences(self) -> list[dict]:
+        sequences = [dict(event) for event in self.events if event["kind"] == "zoom" and event["end"] > event["start"] and event["scale"] > 1]
+        budget = max(0, 3 - len(sequences))
+        candidates = []
         for event in self.moves:
-            start, end = event["start"] - 0.12, event["end"] + 0.5
-            if start <= time < end:
-                amount = min(_smooth((time - start) / 0.3), _smooth((end - time) / 0.45))
-                target = self.square_center(event["_move"].to_square)
-                combined = intro_scale - 1 + 0.16 * amount
-                progress = 0.16 * amount / combined if combined else 1.0
-                focus = (_mix(center[0], target[0], progress), _mix(center[1], target[1], progress))
-                return max(intro_scale, 1 + 0.16 * amount), focus
-        return intro_scale, center
+            after = event["_after"]
+            if after.is_checkmate():
+                scale, hold, priority = 1.42, 2.8, 0
+            elif event["_move"].promotion:
+                scale, hold, priority = 1.34, 2.4, 1
+            elif after.is_check():
+                scale, hold, priority = 1.22, 1.8, 2
+            else:
+                continue
+            start = event["end"]
+            end = min(self.duration, start + hold)
+            if end - start < 0.7:
+                continue
+            square = after.king(after.turn) if after.is_check() else event["_move"].to_square
+            candidates.append({"start": start, "end": end, "scale": scale, "square": chess.square_name(square), "_priority": priority, "_semantic": True})
+        for candidate in sorted(candidates, key=lambda item: (item["_priority"], item["start"])):
+            if not budget:
+                break
+            if any(candidate["start"] < sequence["end"] + (4.0 if sequence.get("_semantic") else 2.0) and candidate["end"] > sequence["start"] - (4.0 if sequence.get("_semantic") else 2.0) for sequence in sequences):
+                continue
+            sequences.append(candidate)
+            budget -= 1
+        sequences.sort(key=lambda event: (event["start"], event["end"]))
+        profiles = ((0.22, 0.38), (0.36, 0.24), (0.46, 0.32))
+        for index, sequence in enumerate(sequences):
+            sequence["_rise"], sequence["_fall"] = profiles[index % len(profiles)]
+        return sequences
+
+    def _tactical_camera_hold(self, time: float) -> float:
+        hold = 0.0
+        for event in self.events:
+            if event["kind"] != "arrow" or not event.get("tactical_group"):
+                continue
+            start, end = event["start"], event["end"]
+            end = min(end, next((item["start"] for item in self.events if item["kind"] == "clear" and item["start"] > start), self.duration))
+            if start - 0.4 < time < end + 0.4:
+                amount = min(_smooth((time - start + 0.4) / 0.4), _smooth((end + 0.4 - time) / 0.4))
+                hold = max(hold, amount)
+        return hold
+
+    def _zoom(self, time: float) -> tuple[float, tuple[float, float]]:
+        center = (self.width / 2, self.panel_height / 2)
+        scale = 1 + 0.45 * (1 - _smooth(time))
+        offsets = []
+        for sequence in self._camera_sequences:
+            start, end = sequence["start"], sequence["end"]
+            if not start < time < end:
+                continue
+            duration = end - start
+            rise = min(0.9, duration * sequence["_rise"])
+            fall = min(1.1, duration * sequence["_fall"])
+            amount = min(_smooth((time - start) / rise), _smooth((end - time) / fall))
+            scale = max(scale, 1 + (sequence["scale"] - 1) * amount)
+            offsets.append((amount, self.square_center(sequence["square"])))
+        total = max(1.0, sum(amount for amount, _ in offsets))
+        focus = tuple(center[axis] + sum((target[axis] - center[axis]) * amount for amount, target in offsets) / total for axis in (0, 1))
+        visibility = 1 - self._tactical_camera_hold(time)
+        return 1 + (scale - 1) * visibility, (_mix(center[0], focus[0], visibility), _mix(center[1], focus[1], visibility))
 
     def _camera(self, panel: Image.Image, time: float) -> Image.Image:
         scale, focus = self._zoom(time)
@@ -692,7 +768,7 @@ class Renderer:
         x, y = self.cursor_at(time)
         event = self._active_move(time)
         pulse = 0.0
-        if event:
+        if event and self._is_player_move(event):
             progress = (time - event["start"]) / (event["end"] - event["start"])
             pulse = max(0, 1 - abs(progress - 0.16) / 0.16)
         draw = ImageDraw.Draw(layer)
