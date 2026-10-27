@@ -181,6 +181,180 @@ def test_cursor_trajectory_is_continuous_and_random_access():
         assert renderer.cursor_at(1.1) == renderer.cursor_at(1.1)
 
 
+@pytest.mark.parametrize("orientation", ["white", "black"])
+def test_annotation_cursor_approaches_source_and_tracks_straight_arrow_tip(orientation):
+    event = {"kind": "arrow", "start": 1, "end": 3, "from_square": "a1", "to_square": "h8"}
+    with Renderer(timeline(orientation=orientation, events=[event])) as renderer:
+        source = renderer.square_center("a1")
+        target = renderer.square_center("h8")
+        assert renderer.cursor_at(1) == pytest.approx(source)
+        assert math.dist(renderer.cursor_at(0.9), source) < math.dist(renderer.cursor_at(0.65), source)
+        for elapsed in (0.07, 0.14, 0.21, 0.28):
+            progress = min(1, elapsed / 0.28)
+            progress = progress * progress * (3 - 2 * progress)
+            expected = tuple(a + (b - a) * progress for a, b in zip(source, target))
+            assert renderer.cursor_at(1 + elapsed) == pytest.approx(expected)
+        assert renderer._cursor_gesture(1.01)[:2] == ("right", "press")
+        assert renderer._cursor_gesture(1.14)[:2] == ("right", "drag")
+        assert renderer._cursor_gesture(1.32)[:2] == ("right", "release")
+        assert renderer._cursor_gesture(1.5) is None
+        layer = Image.new("RGBA", (renderer.width, renderer.panel_height))
+        renderer._arrow(layer, renderer.events[0], 1.14)
+        x, y = renderer.cursor_at(1.14)
+        assert layer.crop((round(x - 2), round(y - 2), round(x + 3), round(y + 3))).getbbox() is not None
+
+
+@pytest.mark.parametrize("orientation", ["white", "black"])
+@pytest.mark.parametrize("source,target", [("b1", "c3"), ("b1", "d2")])
+def test_annotation_cursor_traces_knight_corner_without_cutting_across_it(orientation, source, target):
+    event = {"kind": "arrow", "start": 1, "end": 3, "from_square": source, "to_square": target}
+    with Renderer(timeline(orientation=orientation, events=[event])) as renderer:
+        a, b = renderer.square_center(source), renderer.square_center(target)
+        vertical = abs(chess.square_rank(chess.parse_square(source)) - chess.square_rank(chess.parse_square(target))) == 2
+        corner = (a[0], b[1]) if vertical else (b[0], a[1])
+        for elapsed in (0.07, 0.14, 0.21):
+            progress = elapsed / 0.28
+            distance = 3 * renderer.cell * progress * progress * (3 - 2 * progress)
+            start, finish = (a, corner) if distance <= 2 * renderer.cell else (corner, b)
+            fraction = distance / (2 * renderer.cell) if distance <= 2 * renderer.cell else (distance - 2 * renderer.cell) / renderer.cell
+            expected = tuple(p + (q - p) * fraction for p, q in zip(start, finish))
+            assert renderer.cursor_at(1 + elapsed) == pytest.approx(expected)
+        assert renderer.cursor_at(1.14) == pytest.approx((a[0], a[1] + (corner[1] - a[1]) * 0.75) if vertical else (a[0] + (corner[0] - a[0]) * 0.75, a[1]))
+
+
+def test_knight_arrow_remains_visible_as_cursor_passes_the_corner():
+    event = {"kind": "arrow", "start": 1, "end": 3, "from_square": "b1", "to_square": "c3"}
+    low, high = 0.0, 1.0
+    for _ in range(60):
+        progress = (low + high) / 2
+        if progress * progress * (3 - 2 * progress) < 2 / 3:
+            low = progress
+        else:
+            high = progress
+    time = 1 + (low + high) / 2 * 0.28
+    with Renderer(timeline(events=[event])) as renderer:
+        corner = (renderer.square_center("b1")[0], renderer.square_center("c3")[1])
+        assert renderer.cursor_at(time) == pytest.approx(corner)
+        layer = Image.new("RGBA", (renderer.width, renderer.panel_height))
+        renderer._arrow(layer, renderer.events[0], time)
+        assert layer.getbbox() is not None
+
+
+@pytest.mark.parametrize("orientation", ["white", "black"])
+def test_annotation_cursor_and_arrow_share_board_camera_transform(orientation):
+    events = [
+        {"kind": "zoom", "start": 0.2, "end": 3, "square": "e4", "scale": 1.5},
+        {"kind": "arrow", "start": 1, "end": 3, "from_square": "c3", "to_square": "g5"},
+    ]
+    with Renderer(timeline(orientation=orientation, events=events)) as renderer:
+        time = 1.14
+        x, y = renderer.cursor_at(time)
+        scale, focus = renderer._zoom(time)
+        crop_x = min(renderer.width - renderer.width / scale, max(0, focus[0] - renderer.width / scale / 2))
+        crop_y = min(renderer.panel_height - renderer.panel_height / scale, max(0, focus[1] - renderer.panel_height / scale / 2))
+        x, y = (x - crop_x) * scale, (y - crop_y) * scale
+        bounds = (round(x - 3), round(y - 3), round(x + 4), round(y + 4))
+        arrow = Image.new("RGBA", (renderer.width, renderer.panel_height))
+        cursor = Image.new("RGBA", arrow.size)
+        renderer._arrow(arrow, renderer.events[1], time)
+        renderer._draw_cursor(cursor, time)
+        assert renderer._camera(arrow, time).crop(bounds).getbbox() is not None
+        assert renderer._camera(cursor, time).crop(bounds).getbbox() is not None
+
+
+@pytest.mark.parametrize("kind", ["highlight", "badge"])
+def test_square_annotation_cursor_approaches_and_right_clicks_cell(kind):
+    event = {"kind": kind, "start": 1, "end": 3, "square": "h7"}
+    with Renderer(timeline(events=[event])) as renderer:
+        target = renderer.square_center("h7")
+        assert math.dist(renderer.cursor_at(0.9), target) < math.dist(renderer.cursor_at(0.65), target)
+        assert renderer.cursor_at(1) == pytest.approx(target)
+        assert renderer.cursor_at(1.1) == pytest.approx(target)
+        assert renderer._cursor_gesture(1.01)[:2] == ("right", "press")
+        assert renderer._cursor_gesture(1.12)[:2] == ("right", "release")
+        assert renderer._cursor_gesture(1.3) is None
+
+
+def test_annotation_right_mouse_button_indicator_releases_visibly():
+    event = {"kind": "highlight", "start": 1, "end": 3, "square": "d4"}
+    with Renderer(timeline(events=[event])) as renderer:
+        pressed = Image.new("RGBA", (renderer.width, renderer.panel_height))
+        released = Image.new("RGBA", pressed.size)
+        renderer._draw_cursor(pressed, 1.02)
+        renderer._draw_cursor(released, 1.14)
+        x, y = renderer.square_center("d4")
+        size = renderer.cell * 0.27
+        button = (round(x + size * 1.48), round(y - size * 0.15))
+        assert pressed.getpixel(button) == (255, 197, 63, 255)
+        assert released.getpixel(button) != (255, 197, 63, 255)
+
+
+def test_annotations_cleared_before_stroke_finishes_do_not_capture_pointer():
+    events = [
+        {"kind": "arrow", "start": 1, "end": 3, "from_square": "a1", "to_square": "h8"},
+        {"kind": "clear", "start": 1.1, "end": 1.1},
+    ]
+    with Renderer(timeline(events=events)) as renderer:
+        assert renderer._cursor_strokes == []
+        assert renderer._cursor_gesture(1.14) is None
+
+
+def test_close_annotations_keep_spoken_anchors_but_do_not_schedule_conflicting_pointer_strokes():
+    events = [
+        {"kind": "arrow", "start": 1, "end": 3, "from_square": "a1", "to_square": "h8"},
+        {"kind": "highlight", "start": 1, "end": 3, "square": "h1"},
+        {"kind": "arrow", "start": 1.05, "end": 3, "from_square": "h1", "to_square": "a8"},
+        {"kind": "badge", "start": 2, "end": 3, "square": "b2"},
+    ]
+    with Renderer(timeline(events=events)) as renderer:
+        assert len(renderer.annotations_at(1.1)) == 3
+        assert [stroke["event"]["_order"] for stroke in renderer._cursor_strokes] == [0, 3]
+        for time in (0.6, 1, 1.05, 1.28, 1.4, 1.6, 2, 2.08, 2.2):
+            assert math.dist(renderer.cursor_at(time - 0.00001), renderer.cursor_at(time + 0.00001)) < renderer.cell * 0.01
+        expected = renderer.cursor_at(1.14)
+        renderer.cursor_at(3.5)
+        renderer.cursor_at(0)
+        assert renderer.cursor_at(1.14) == expected
+
+
+def test_piece_drag_has_priority_over_annotation_and_explicit_cursor_events():
+    move = move_event(chess.STARTING_FEN, "e2e4", 1, 2)
+    annotations = [
+        {"kind": "arrow", "start": 0.8, "end": 3, "from_square": "a1", "to_square": "h8"},
+        {"kind": "highlight", "start": 1.2, "end": 3, "square": "h1"},
+        {"kind": "badge", "start": 1.5, "end": 3, "square": "a8"},
+        {"kind": "cursor", "start": 1.3, "end": 1.7, "square": "h8"},
+    ]
+    with Renderer(timeline(events=[move])) as baseline, Renderer(timeline(events=[move, *annotations])) as renderer:
+        for time in (0.6, 0.9, 1, 1.1, 1.18, 1.3, 1.5, 1.82, 2):
+            assert renderer.cursor_at(time) == pytest.approx(baseline.cursor_at(time))
+        assert renderer._cursor_strokes == []
+
+
+def test_annotation_cursor_and_control_points_stay_inside_board():
+    events = [
+        {"kind": "arrow", "start": 0, "end": 1, "from_square": "a1", "to_square": "h8"},
+        {"kind": "highlight", "start": 1, "end": 2, "square": "a8"},
+        {"kind": "badge", "start": 2, "end": 3, "square": "h1"},
+    ]
+    with Renderer(timeline(orientation="black", events=events)) as renderer:
+        points = [point for _, point in renderer._cursor_keys]
+        points.extend(renderer.cursor_at(index / 100) for index in range(401))
+        for x, y in points:
+            assert renderer.board_x <= x <= renderer.board_x + renderer.side
+            assert renderer.board_y <= y <= renderer.board_y + renderer.side
+
+
+def test_back_to_back_moves_do_not_interrupt_previous_drag_or_jump_at_boundary():
+    first = move_event(chess.STARTING_FEN, "e2e4", 0.5, 1.5)
+    second = move_event(first["fen"], "e7e5", 1.5, 2.5)
+    with Renderer(timeline(events=[first])) as baseline, Renderer(timeline(events=[first, second])) as renderer:
+        for time in (0.68, 1, 1.32, 1.49, 1.5):
+            assert renderer.cursor_at(time) == pytest.approx(baseline.cursor_at(time))
+        assert math.dist(renderer.cursor_at(1.49999), renderer.cursor_at(1.50001)) < 0.01
+        assert renderer.cursor_at(1.68) == pytest.approx(renderer.square_center("e7"))
+
+
 def test_mate_and_winner_overlay_is_grounded_in_board():
     fen = "6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1"
     event = move_event(fen, "e1e8")

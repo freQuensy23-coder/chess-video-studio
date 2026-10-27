@@ -11,7 +11,7 @@ def test_schema_requires_exact_position_count():
 def test_gemini_thinking_is_bounded_and_leaves_room_for_structured_output():
     settings = Settings(_env_file=None, llm_provider="vertex", llm_model="gemini-3.1-pro-preview")
     payload = _llm_payload([], settings, position_count=34)
-    assert payload["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "low"
+    assert payload["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "high"
     assert "minItems" not in payload["generationConfig"]["responseJsonSchema"]["properties"]["beats"]
 
 

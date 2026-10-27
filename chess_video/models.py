@@ -4,7 +4,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-
 Emotion = Literal['neutral', 'worried', 'thinking', 'surprised', 'happy']
 Square = str
 RESULTS = {'*', '1-0', '0-1', '1/2-1/2'}

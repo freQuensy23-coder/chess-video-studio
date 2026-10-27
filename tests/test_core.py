@@ -7,7 +7,6 @@ from chess_video.analysis import analyze_game
 from chess_video.game import load_game, validate_script
 from chess_video.models import narration_text
 
-
 SHORT = '1. e4 e5 2. Nf3 Nc6 *'
 MATE = '1. f3 e5 2. g4 Qh4# 0-1'
 

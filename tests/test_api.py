@@ -4,7 +4,6 @@ from fastapi.testclient import TestClient
 
 from chess_video.api import create_app
 
-
 TOKEN = "unit-test-local-token"
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 

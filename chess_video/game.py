@@ -4,8 +4,7 @@ import re
 import chess
 import chess.pgn
 
-from .models import Game, RESULTS, Script
-
+from .models import RESULTS, Game, Script
 
 MAX_PGN_BYTES = 1_000_000
 MAX_PLIES = 2000

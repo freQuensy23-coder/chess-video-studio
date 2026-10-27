@@ -6,7 +6,6 @@ import pytest
 
 from chess_video.pipeline import generate_video
 
-
 GAME = {"initial_fen": "start", "positions": [{"ply": 0}], "headers": {}, "result": "*"}
 SCRIPT = {"title": "Mate", "language": "en", "perspective": "white", "beats": []}
 SPEECH = {"audio_path": "speech.mp3", "duration": 2.0}

@@ -22,13 +22,13 @@ import cairosvg
 import chess
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont
 
-
 _ASSETS = Path(__file__).with_name("assets")
 _ANNOTATIONS = {"arrow", "highlight", "badge"}
 _KINDS = _ANNOTATIONS | {"move", "zoom", "cursor", "clear", "face", "result"}
 _EMOTIONS = {"neutral", "worried", "thinking", "surprised", "happy"}
 _CYAN = (65, 230, 232)
 _GOLD = (255, 197, 63)
+_ARROW_GROWTH = 0.28
 
 
 def _number(value: Any, name: str, minimum: float = 0) -> float:
@@ -425,28 +425,69 @@ class Renderer:
         return None
 
     def _make_cursor_keys(self) -> list[tuple[float, tuple[float, float]]]:
-        keys: list[tuple[float, tuple[float, float]]] = []
-        source = self.moves[0]["_move"].from_square if self.moves else chess.D4
-        keys.append((0.0, self.square_center(source)))
+        actions = []
+        previous_end = 0.0
+        for event in self.moves:
+            duration = event["end"] - event["start"]
+            a = self.square_center(event["_move"].from_square)
+            b = self.square_center(event["_move"].to_square)
+            approach = max(previous_end, event["start"] - 0.4)
+            contact = max(approach, event["start"] - 0.08)
+            points = []
+            if contact > approach:
+                points.append((contact, a))
+            points.extend([(event["start"] + duration * 0.18, a), (event["start"] + duration * (0.63 if event["_move"].promotion else 0.82), b)])
+            if event["_move"].promotion:
+                left, top, down = self._promotion_geometry(event)
+                choice = ("q", "r", "b", "n").index(chess.piece_symbol(event["_move"].promotion))
+                row = choice if down else 3 - choice
+                selected = (left + self.cell / 2, top + (row + 0.5) * self.cell)
+                points.extend([(event["start"] + duration * 0.9, selected), (event["end"], selected)])
+            else:
+                points.append((event["end"], b))
+            actions.append({"approach": approach, "end": event["end"], "event": event, "keys": points})
+            previous_end = event["end"]
+        self._cursor_strokes: list[dict] = []
         for event in self.events:
-            if event["kind"] == "cursor":
-                point = self.square_center(event["square"])
-                keys.append((min(event["end"], event["start"] + 0.4), point))
-            if event["kind"] == "move":
-                duration = event["end"] - event["start"]
-                a = self.square_center(event["_move"].from_square)
-                b = self.square_center(event["_move"].to_square)
-                keys.extend([(max(0, event["start"] - 0.08), a), (event["start"] + duration * 0.18, a), (event["start"] + duration * (0.63 if event["_move"].promotion else 0.82), b)])
-                if event["_move"].promotion:
-                    left, top, down = self._promotion_geometry(event)
-                    choice = ("q", "r", "b", "n").index(chess.piece_symbol(event["_move"].promotion))
-                    row = choice if down else 3 - choice
-                    selected = (left + self.cell / 2, top + (row + 0.5) * self.cell)
-                    keys.extend([(event["start"] + duration * 0.9, selected), (event["end"], selected)])
-                else:
-                    keys.append((event["end"], b))
+            kind = event["kind"]
+            if kind not in _ANNOTATIONS | {"cursor"}:
+                continue
+            start = event["start"]
+            if kind == "cursor":
+                draw_end = min(event["end"], start + 0.4)
+                approach, end = start, draw_end
+                points = [(draw_end, self.square_center(event["square"]))]
+            else:
+                if kind == "arrow" and event["from_square"] == event["to_square"]:
+                    continue
+                draw_end = start + (_ARROW_GROWTH if kind == "arrow" else 0.08)
+                clear = next((item["start"] for item in self.events if item["kind"] == "clear" and item["start"] > start), self.duration)
+                end = min(draw_end + 0.12, event["end"], clear, self.duration)
+                if end <= draw_end:
+                    continue
+                approach = max(0.0, start - 0.4)
+                a = self.square_center(event["from_square"] if kind == "arrow" else event["square"])
+                b = self.square_center(event["to_square"]) if kind == "arrow" else a
+                points = [(start, a), (draw_end, b), (end, b)]
+            if end <= approach or any(approach < action["end"] and end > action["approach"] for action in actions):
+                continue
+            action = {"approach": approach, "start": start, "draw_end": draw_end, "end": end, "event": event, "keys": points}
+            actions.append(action)
+            if kind in _ANNOTATIONS:
+                self._cursor_strokes.append(action)
+        actions.sort(key=lambda action: (action["approach"], action["event"]["_order"]))
+        source = self.moves[0]["_move"].from_square if self.moves else chess.D4
+        initial = self.square_center(source)
+        if actions and actions[0]["keys"][0][0] == 0:
+            initial = actions[0]["keys"][0][1]
+        keys = [(0.0, initial)]
+        for action in actions:
+            keys.append((action["approach"], keys[-1][1]))
+            keys.extend(action["keys"])
         ordered: dict[float, tuple[float, float]] = {}
         for time, point in sorted(keys, key=lambda key: key[0]):
+            if not (self.board_x <= point[0] <= self.board_x + self.side and self.board_y <= point[1] <= self.board_y + self.side):
+                raise ValueError("Cursor control points must remain inside the board")
             ordered[time] = point
         return sorted(ordered.items())
 
@@ -459,6 +500,9 @@ class Renderer:
         return left, top, down
 
     def cursor_at(self, time: float) -> tuple[float, float]:
+        for stroke in self._cursor_strokes:
+            if stroke["event"]["kind"] == "arrow" and stroke["start"] <= time < stroke["draw_end"]:
+                return self._arrow_visible_points(stroke["event"], time)[-1]
         index = bisect.bisect_right(self._cursor_times, time)
         if index == 0:
             return self._cursor_keys[0][1]
@@ -466,7 +510,18 @@ class Renderer:
             return self._cursor_keys[-1][1]
         start, a = self._cursor_keys[index - 1]
         end, b = self._cursor_keys[index]
-        return _motion(a, b, (time - start) / max(0.001, end - start))
+        return _motion(a, b, (time - start) / (end - start))
+
+    def _cursor_gesture(self, time: float) -> tuple[str, str, float] | None:
+        for stroke in self._cursor_strokes:
+            if stroke["start"] <= time < stroke["end"]:
+                press_end = min(stroke["draw_end"], stroke["start"] + 0.04) if stroke["event"]["kind"] == "arrow" else stroke["draw_end"]
+                if time < press_end:
+                    return "right", "press", (time - stroke["start"]) / (press_end - stroke["start"])
+                if time < stroke["draw_end"]:
+                    return "right", "drag", (time - press_end) / (stroke["draw_end"] - press_end)
+                return "right", "release", (time - stroke["draw_end"]) / (stroke["end"] - stroke["draw_end"])
+        return None
 
     def _selection(self, time: float) -> str | None:
         for event in self.moves:
@@ -542,11 +597,11 @@ class Renderer:
                 draw.rectangle((left + 2, py + 2, left + self.cell - 2, py + self.cell - 2), fill=(77, 217, 212, 100 if progress < 0.89 else 185))
             self._put_piece(panel, symbol.upper() if event["_piece"].color else symbol, (left + self.cell / 2, py + self.cell / 2))
 
-    def _arrow(self, layer: Image.Image, event: dict, time: float) -> None:
+    def _arrow_visible_points(self, event: dict, time: float) -> list[tuple[float, float]]:
         source, target = event["from_square"], event["to_square"]
         a, b = self.square_center(source), self.square_center(target)
         if a == b:
-            return
+            return [a]
         sf, sr = chess.square_file(chess.parse_square(source)), chess.square_rank(chess.parse_square(source))
         tf, tr = chess.square_file(chess.parse_square(target)), chess.square_rank(chess.parse_square(target))
         points = [a]
@@ -554,25 +609,33 @@ class Renderer:
             points.append((a[0], b[1]) if abs(sr - tr) == 2 else (b[0], a[1]))
         points.append(b)
         lengths = [math.dist(p, q) for p, q in zip(points, points[1:])]
-        growth = _smooth((time - event["start"]) / 0.28)
+        growth = _smooth((time - event["start"]) / _ARROW_GROWTH)
         total = sum(lengths) * growth
         visible = [points[0]]
         for index, length in enumerate(lengths):
             if total >= length:
                 visible.append(points[index + 1])
                 total -= length
+                if total <= 0:
+                    break
             else:
                 fraction = total / max(0.001, length)
                 visible.append((_mix(points[index][0], points[index + 1][0], fraction), _mix(points[index][1], points[index + 1][1], fraction)))
                 break
-        if len(visible) < 2 or math.dist(visible[-2], visible[-1]) < 0.5:
+        return visible
+
+    def _arrow(self, layer: Image.Image, event: dict, time: float) -> None:
+        visible = self._arrow_visible_points(event, time)
+        if len(visible) < 2 or sum(math.dist(a, b) for a, b in zip(visible, visible[1:])) < 0.5:
             return
+        growth = _smooth((time - event["start"]) / _ARROW_GROWTH)
         fade = min(1.0, max(0.0, (event["end"] - time) / 0.23))
         color = (*event["_color"], round(220 * fade * growth))
         draw = ImageDraw.Draw(layer)
         shaft = max(4, round(self.cell * 0.13))
         draw.line(visible, fill=color, width=shaft, joint="curve")
-        tip, previous = visible[-1], visible[-2]
+        tip = visible[-1]
+        previous = next(point for point in reversed(visible[:-1]) if math.dist(point, tip) > 1e-8)
         angle = math.atan2(tip[1] - previous[1], tip[0] - previous[0])
         head = self.cell * 0.32 * min(1, growth * 2)
         base = (tip[0] - head * math.cos(angle), tip[1] - head * math.sin(angle))
@@ -636,6 +699,18 @@ class Renderer:
             radius = self.cell * (0.12 + pulse * 0.18)
             draw.ellipse((x - radius, y - radius, x + radius, y + radius), outline=(*_CYAN, round(170 * (1 - pulse * 0.5))), width=2)
         size = self.cell * 0.27
+        gesture = self._cursor_gesture(time)
+        if gesture:
+            _, phase, progress = gesture
+            radius = self.cell * (0.14 + (progress * 0.18 if phase == "release" else 0.04))
+            opacity = round(210 * (1 - progress)) if phase == "release" else 210
+            draw.ellipse((x - radius, y - radius, x + radius, y + radius), outline=(*_GOLD, opacity), width=2)
+            left = min(self.board_x + self.side - size * 1.7, max(self.board_x, x + size))
+            top = min(self.board_y + self.side - size, max(self.board_y, y - size * 0.4))
+            draw.rounded_rectangle((left, top, left + size * 0.7, top + size), radius=size * 0.3, fill=(24, 35, 43, 235), outline=(254, 254, 244, 235), width=1)
+            if phase != "release":
+                draw.rounded_rectangle((left + size * 0.37, top + size * 0.08, left + size * 0.6, top + size * 0.46), radius=size * 0.08, fill=(*_GOLD, 255))
+            draw.line((left + size * 0.35, top, left + size * 0.35, top + size * 0.5), fill=(254, 254, 244, 235), width=1)
         points = [(x, y), (x + size * 0.1, y + size), (x + size * 0.35, y + size * 0.72), (x + size * 0.6, y + size * 1.15), (x + size * 0.79, y + size * 1.04), (x + size * 0.53, y + size * 0.62), (x + size * 0.94, y + size * 0.58)]
         draw.polygon([(px + 1.5, py + 2) for px, py in points], fill=(5, 12, 23, 100))
         draw.polygon(points, fill=(254, 254, 244, 255), outline=(27, 43, 52, 255), width=1)

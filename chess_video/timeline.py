@@ -3,7 +3,6 @@ import math
 from .game import validate_script
 from .models import validate_speech
 
-
 MOVE_DURATION = 0.35
 ENDING_HOLD = 1.5
 PRIORITY = {'clear': 0, 'move': 1, 'face': 2, 'arrow': 3, 'highlight': 3,

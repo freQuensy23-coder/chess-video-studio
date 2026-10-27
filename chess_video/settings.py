@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     llm_max_input_characters: int = Field(default=180000, ge=1000, le=1000000)
     llm_max_repairs: int = Field(default=1, ge=0, le=2)
     llm_temperature: float = Field(default=0.65, ge=0, le=2)
+    llm_thinking_level: Literal['low', 'high'] = 'high'
     language: Literal['en', 'ru'] = 'en'
     perspective: Literal['white', 'black'] = 'white'
     vertex_project: str | None = None

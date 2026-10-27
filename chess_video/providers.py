@@ -48,7 +48,11 @@ Build an opening threat hook, worry, counterplay, and payoff ONLY when the actua
 Do not invent evaluations, variations, forced mates, traps, brilliant moves, or wins. A tactical claim needs the
 actual legal board evidence and, for engine evaluations or forced lines, supplied real analysis. Without engine
 evidence express uncertainty or an intention, not objective superiority. Checkmate requires is_checkmate=true;
-a result announcement requires the actual final result. Never announce a future move before its own beat.
+a result announcement requires the actual final result. Never describe a future move as already played.
+Conditional plans and uncertainty are encouraged: explain real threats and alternatives, using legal board/engine evidence.
+For medium games use 4-8 purposeful cues across the story, including arrows and at least one focus zoom.
+Open with a concrete immediate concern when supported; include a longer thinking beat about a genuine choice.
+At the actual final mate, explain a relevant escape-square control or blocked flight square when clearly supported.
 Plan useful visual teaching cues sparingly: arrows for a real discussed relation between squares, highlights
 for a relevant piece or threat, zoom for an important local situation, clear when annotations stop being useful.
 Include a few purposeful arrow/highlight/zoom cues when justified, not decorative spam and not on every beat.
@@ -236,7 +240,7 @@ def _request(client: httpx.Client, method: str, url: str, settings: Settings, he
                     if settings.generation_dir is not None:
                         _write_json(settings.generation_dir / 'provider-http-error.json', {'status': response.status_code, 'detail': detail})
                     raise ProviderError(
-                        f'Provider request failed with HTTP {response.status_code}: {detail[:1500]}',
+                        f'Provider request failed with HTTP {response.status_code}; details retained in the private job directory',
                         outcome_unknown=response.status_code >= 500 or response.status_code == 408,
                     )
                 else:
@@ -314,6 +318,7 @@ def _llm_config(settings: Settings) -> dict:
         'language': settings.language,
         'perspective': settings.perspective,
         'temperature': settings.llm_temperature,
+        'thinking_level': settings.llm_thinking_level,
         'max_output_tokens': settings.llm_max_output_tokens,
         'response_format': settings.llm_response_format,
         'speech_character_budget': settings.max_speech_characters,
@@ -359,7 +364,7 @@ def _llm_payload(messages: list[dict], settings: Settings, position_count: int |
             'responseJsonSchema': _script_schema(),
             'maxOutputTokens': settings.llm_max_output_tokens,
             'temperature': settings.llm_temperature,
-            'thinkingConfig': ({'thinkingLevel': 'low'} if settings.llm_model and settings.llm_model.startswith('gemini-3') else {'thinkingBudget': 2048}),
+            'thinkingConfig': ({'thinkingLevel': settings.llm_thinking_level} if settings.llm_model and settings.llm_model.startswith('gemini-3') else {'thinkingBudget': 2048}),
         },
     }
 

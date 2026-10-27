@@ -1,6 +1,6 @@
-from copy import deepcopy
 import math
 import shutil
+from copy import deepcopy
 
 import chess
 import chess.engine
