@@ -441,7 +441,7 @@ def test_audio_tail_extends_video_and_encoder_uses_safe_arguments(tmp_path, monk
         return original_popen(command, *args, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", record)
-    output = render_video(timeline(duration=0.2, audio_path=str(audio), width=160, height=284, fps=10), tmp_path / "delivered.mp4")
+    output = render_video(timeline(duration=0.2, audio_path=str(audio), width=240, height=426, fps=10), tmp_path / "delivered.mp4")
     assert output.stat().st_size > 1000
     command = next(command for command in calls if "rawvideo" in command)
     assert "-shortest" not in command

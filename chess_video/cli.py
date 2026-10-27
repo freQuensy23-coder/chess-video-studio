@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from chess_video import __version__
+from chess_video.video_options import validate_video_options
 
 
 def parser() -> argparse.ArgumentParser:
@@ -31,13 +32,15 @@ def parser() -> argparse.ArgumentParser:
     serve = commands.add_parser("serve", help="Start the authenticated single-worker local API")
     serve.add_argument("--host", default="127.0.0.1", choices=["127.0.0.1", "localhost", "::1"])
     serve.add_argument("--port", type=int, default=8787)
-    serve.add_argument("--jobs", type=Path, default=Path(".jobs"))
+    serve.add_argument("--jobs", type=Path, default=None)
     return root
 
 
 def main() -> int:
     arguments = parser().parse_args()
     try:
+        if arguments.command in {"generate", "showcase"}:
+            validate_video_options(arguments.width, arguments.height, arguments.fps)
         if arguments.command == "showcase":
             from chess_video.renderer import write_showcase
 

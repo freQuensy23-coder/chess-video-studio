@@ -10,6 +10,7 @@ from chess_video.game import load_game, validate_game, validate_script
 from chess_video.providers import generate_script, synthesize
 from chess_video.renderer import render_video
 from chess_video.timeline import compile_timeline
+from chess_video.video_options import validate_video_options
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -35,6 +36,7 @@ def generate_video(
     script_path: str | Path | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict:
+    validate_video_options(width, height, fps)
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = output_dir / "manifest.json"

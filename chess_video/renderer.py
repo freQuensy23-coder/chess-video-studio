@@ -22,6 +22,8 @@ import cairosvg
 import chess
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont
 
+from .video_options import validate_video_options
+
 _ASSETS = Path(__file__).with_name("assets")
 _ANNOTATIONS = {"arrow", "highlight", "badge"}
 _KINDS = _ANNOTATIONS | {"move", "zoom", "cursor", "clear", "face", "result"}
@@ -177,14 +179,10 @@ class Renderer:
         self.timeline = copy.deepcopy(timeline)
         if timeline.get("version", 1) != 1:
             raise ValueError("Unsupported timeline version")
-        self.width = self._dimension(timeline.get("width", 608), "width")
-        self.height = self._dimension(timeline.get("height", 1080), "height")
-        if self.width < 160 or self.height < self.width * 1.35 or self.width > 4096 or self.height > 8192:
-            raise ValueError("Dimensions must describe an even portrait frame between 160 and 4096 pixels wide")
-        fps = _number(timeline.get("fps", 30), "fps", 1)
-        if not fps.is_integer() or fps > 120:
-            raise ValueError("fps must be an integer from 1 to 120")
-        self.fps = int(fps)
+        self.width = timeline.get("width", 608)
+        self.height = timeline.get("height", 1080)
+        self.fps = timeline.get("fps", 30)
+        validate_video_options(self.width, self.height, self.fps)
         self.duration = _number(timeline.get("duration"), "duration", 0.001)
         self.orientation = timeline.get("orientation", "white")
         if self.orientation not in {"white", "black"}:

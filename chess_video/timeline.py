@@ -2,6 +2,7 @@ import math
 
 from .game import validate_script
 from .models import validate_speech
+from .video_options import validate_video_options
 
 MOVE_DURATION = 0.35
 ENDING_HOLD = 1.5
@@ -20,10 +21,7 @@ def _result_label(game, language):
 
 
 def compile_timeline(game, script, speech, width=608, height=1080, fps=30) -> dict:
-    if (any(type(value) is not int for value in (width, height, fps))
-            or not (240 <= width < height <= 3840)
-            or width % 2 or height % 2 or not 1 <= fps <= 120):
-        raise ValueError('Output requires even portrait dimensions and fps between 1 and 120')
+    validate_video_options(width, height, fps)
     script = validate_script(game, script)
     speech = validate_speech(script, speech)
     starts = speech['character_start_times_seconds']

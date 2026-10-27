@@ -17,10 +17,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from chess_video.pipeline import generate_video, write_json
 from chess_video.settings import Settings
+from chess_video.video_options import validate_video_options
 
 
 class JobRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
     pgn: str = Field(min_length=1, max_length=200_000)
     width: int = Field(default=608, ge=320, le=2160)
     height: int = Field(default=1080, ge=480, le=3840)
@@ -28,8 +29,7 @@ class JobRequest(BaseModel):
 
     @model_validator(mode="after")
     def valid_video_shape(self):
-        if self.width % 2 or self.height % 2 or self.width >= self.height:
-            raise ValueError("Use even dimensions with width smaller than height")
+        validate_video_options(self.width, self.height, self.fps)
         return self
 
 
