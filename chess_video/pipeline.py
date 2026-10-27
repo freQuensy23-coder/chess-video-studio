@@ -37,6 +37,10 @@ def generate_video(
     progress: Callable[[str], None] | None = None,
 ) -> dict:
     validate_video_options(width, height, fps)
+    presenter = getattr(settings, 'presenter', 'male')
+    if presenter not in ('male', 'female'):
+        raise ValueError('Presenter must be male or female')
+    voice_id = getattr(settings, 'resolved_voice_id', None)
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = output_dir / "manifest.json"
@@ -77,7 +81,7 @@ def generate_video(
     speech = synthesize(script, output_dir, settings)
     write_json(output_dir / "speech.json", speech)
     announce("timing")
-    timeline = compile_timeline(game, script, speech, width=width, height=height, fps=fps)
+    timeline = compile_timeline(game, script, speech, width=width, height=height, fps=fps, presenter=presenter)
     write_json(output_dir / "timeline.json", timeline)
     announce("rendering")
     video_path = render_video(timeline, output_dir / "video.mp4")
@@ -87,9 +91,11 @@ def generate_video(
         "width": width,
         "height": height,
         "fps": fps,
+        "presenter": presenter,
+        "voice_id": voice_id,
         "title": script["title"],
         "plies": len(game["positions"]) - 1,
-        "providers": {"llm": getattr(settings, "llm_provider", None), "tts": "elevenlabs"},
+        "providers": {"llm": "provided_script" if script_path is not None else getattr(settings, "llm_provider", None), "tts": "elevenlabs"},
         "artifacts": ["game.pgn", "game.json", "script.json", "transcript.txt", "narration.mp3", "speech.json", "timeline.json", "video.mp4"],
     }
     write_json(manifest_path, result)

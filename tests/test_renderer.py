@@ -352,7 +352,8 @@ def test_back_to_back_moves_do_not_interrupt_previous_drag_or_jump_at_boundary()
         for time in (0.68, 1, 1.32, 1.49, 1.5):
             assert renderer.cursor_at(time) == pytest.approx(baseline.cursor_at(time))
         assert math.dist(renderer.cursor_at(1.49999), renderer.cursor_at(1.50001)) < 0.01
-        assert renderer.cursor_at(1.68) == pytest.approx(renderer.square_center("e7"))
+        assert renderer.cursor_at(1.68) == pytest.approx(renderer.square_center("e4"))
+        assert renderer._selection(1.68) is None
 
 
 def test_mate_and_winner_overlay_is_grounded_in_board():
@@ -582,7 +583,7 @@ def test_initial_pullback_is_board_only_and_random_access():
             assert first.crop(bounds).tobytes() == other.frame(0.2).crop(bounds).tobytes()
 
 
-def test_initial_pullback_blends_continuously_into_first_move_camera():
+def test_initial_pullback_finishes_continuously_during_first_quiet_move():
     event = move_event(chess.STARTING_FEN, 'e2e4')
     with Renderer(timeline(events=[event])) as renderer:
         before_scale, before_focus = renderer._zoom(0.99999)
@@ -591,7 +592,7 @@ def test_initial_pullback_blends_continuously_into_first_move_camera():
         assert math.dist(before_focus, after_focus) < 0.01
 
 
-def test_initial_pullback_focus_is_continuous_at_move_camera_onset():
+def test_initial_pullback_focus_is_continuous_while_approaching_first_quiet_move():
     event = move_event(chess.STARTING_FEN, 'e2e4')
     with Renderer(timeline(events=[event])) as renderer:
         onset = event['start'] - 0.12

@@ -16,6 +16,7 @@ def parser() -> argparse.ArgumentParser:
     generate.add_argument("--output", type=Path, required=True)
     generate.add_argument("--script", type=Path)
     generate.add_argument("--language", choices=["en", "ru"])
+    generate.add_argument("--voice-id")
     script = commands.add_parser("script", help="Generate a chess-grounded commentary script")
     script.add_argument("--pgn", type=Path, required=True)
     script.add_argument("--output", type=Path, required=True)
@@ -25,6 +26,8 @@ def parser() -> argparse.ArgumentParser:
     render.add_argument("--output", type=Path, required=True)
     showcase = commands.add_parser("showcase", help="Render the complete animation catalogue without API keys")
     showcase.add_argument("--output", type=Path, required=True)
+    for command in [generate, script, render, showcase]:
+        command.add_argument("--presenter", choices=["male", "female"])
     for command in [generate, showcase]:
         command.add_argument("--width", type=int, default=608)
         command.add_argument("--height", type=int, default=1080)
@@ -44,14 +47,17 @@ def main() -> int:
         if arguments.command == "showcase":
             from chess_video.renderer import write_showcase
 
+            options = {"presenter": arguments.presenter} if arguments.presenter is not None else {}
             result = write_showcase(
-                arguments.output, width=arguments.width, height=arguments.height, fps=arguments.fps
+                arguments.output, width=arguments.width, height=arguments.height, fps=arguments.fps, **options
             )
             print(json.dumps({"video_path": str(result)}))
         elif arguments.command == "render":
             from chess_video.renderer import render_video
 
             timeline = json.loads(arguments.timeline.read_text(encoding="utf-8"))
+            if arguments.presenter is not None:
+                timeline["presenter"] = arguments.presenter
             path = render_video(timeline, arguments.output)
             print(json.dumps({"video_path": str(path)}))
         elif arguments.command in {"generate", "script"}:
@@ -61,8 +67,15 @@ def main() -> int:
             from chess_video.settings import Settings
 
             settings = Settings()
+            overrides = {}
             if arguments.language:
-                settings = settings.model_copy(update={"language": arguments.language})
+                overrides["language"] = arguments.language
+            if arguments.presenter is not None:
+                overrides["presenter"] = arguments.presenter
+            if arguments.command == "generate" and arguments.voice_id is not None:
+                overrides["elevenlabs_voice_id"] = Settings.validate_identifier(arguments.voice_id)
+            if overrides:
+                settings = settings.model_copy(update=overrides)
             pgn = arguments.pgn.read_text(encoding="utf-8")
             if arguments.command == "script":
                 game = load_game(pgn)

@@ -30,6 +30,8 @@ jobs:
         if: ${{ !cancelled() }}
       - run: uv run chess-video showcase --output output/showcase.mp4 --width 608 --height 1080 --fps 24
       - run: uv run python scripts/verify_media.py output/showcase.mp4
+      - run: uv run chess-video showcase --presenter female --output output/showcase-female.mp4 --width 608 --height 1080 --fps 24
+      - run: uv run python scripts/verify_media.py output/showcase-female.mp4
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -248,7 +248,7 @@ def test_exact_unicode_speech_payload_alignment_duration_and_cache(monkeypatch, 
     calls = []
     def handler(request):
         calls.append(request)
-        assert str(request.url) == f'https://api.elevenlabs.io/v1/text-to-speech/{settings.elevenlabs_voice_id}/with-timestamps?output_format=mp3_44100_128'
+        assert str(request.url) == f'https://api.elevenlabs.io/v1/text-to-speech/{settings.resolved_voice_id}/with-timestamps?output_format=mp3_44100_128'
         assert request.headers['xi-api-key'] == 'test-eleven-secret'
         body = json.loads(request.content)
         assert body['text'] == text
