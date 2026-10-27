@@ -13,6 +13,7 @@ output/
 .jobs/
 .tools/
 .local/
+/docs/implementation-plan.md
 *.mp4
 *.mp3
 *.wav

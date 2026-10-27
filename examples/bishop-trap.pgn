@@ -1,0 +1,9 @@
+[Event "Bishop trap reference excerpt"]
+[White "White"]
+[Black "Black"]
+[SetUp "1"]
+[FEN "r1b2rk1/pp1p1ppp/2p5/4P3/2B1nN2/7P/PPP2PP1/2KR3R w - - 0 1"]
+[Source "https://youtu.be/cG-0ItfHk8E"]
+[Result "1-0"]
+
+1. Nd3 d5 2. exd6 b5 3. Bb3 a5 4. a3 c5 5. Ne5 c4 6. d7 Bb7 7. Ba2 Nxf2 8. d8=Q Raxd8 9. Rxd8 Rxd8 10. Rf1 Ne4 11. Rxf7 Bd5 12. Re7 Nf2 13. b4 axb4 14. axb4 Bxg2 15. h4 Ra8 16. h5 Rxa2 17. Re8# 1-0

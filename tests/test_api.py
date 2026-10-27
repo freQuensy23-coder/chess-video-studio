@@ -1,5 +1,4 @@
 import time
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -28,6 +27,7 @@ def test_api_executes_job_and_serves_only_allowlisted_files(tmp_path):
         assert response.status_code == 202
         job_id = response.json()["id"]
         deadline = time.monotonic() + 5
+        job = {}
         while time.monotonic() < deadline:
             job = client.get(f"/v1/jobs/{job_id}", headers=HEADERS).json()
             if job["status"] not in {"queued", "running"}:
@@ -68,6 +68,7 @@ def test_api_never_exposes_provider_exception_text(tmp_path):
     with TestClient(create_app(job_root=tmp_path, api_token=TOKEN, pipeline=pipeline)) as client:
         job_id = client.post("/v1/jobs", headers=HEADERS, json={"pgn": "1. e4 *"}).json()["id"]
         deadline = time.monotonic() + 5
+        result = {}
         while time.monotonic() < deadline:
             result = client.get(f"/v1/jobs/{job_id}", headers=HEADERS).json()
             if result["status"] == "failed":
