@@ -15,6 +15,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import quote
 
+import chess
 import httpx
 from pydantic import SecretStr, ValidationError
 
@@ -33,7 +34,18 @@ Use the requested language and perspective.
 Use the supplied presenter profile for first-person grammatical gender when the language requires it.
 In Russian use feminine first-person forms for a female presenter and masculine forms for a male presenter.
 There must be exactly one beat per position, starting at ply 0, in increasing order through the final ply.
-A beat describes only that position and its actual preceding move.
+A beat covers the actual move at that ply, never another ply's move. Opponent beats react to the resulting position.
+Own beats may start before the actual move: player_decisions supplies the exact pre_move_position for each own ply.
+At selected meaningful own choices, think from pre_move_position: notice a concrete concern, consider a candidate,
+a plausible opponent reply and its consequence, then decide. Use pre_move_position.analysis, not post-move analysis,
+for that reasoning. Candidates and replies must be legal on their respective hypothetical boards; concrete lines
+and material claims need supplied evidence. Without verified continuation, express uncertainty, not invented analysis.
+End that reasoning with a short commitment phrase near the end; set a nonnull move_anchor to that exact phrase,
+so the actual move starts at the decision, not before the reasoning. Use pre-move cues only for relations on the
+pre_move_position board; anchor post-move facts and cues after the commitment. Never use later positions, future
+PGN replies, post-move evaluations or the final result as evidence for a decision the player has not made yet.
+Routine own moves and opponent replies stay quick. Avoid stock phrases, generic hesitation, repeated "I play",
+and constant exposition; longer thinking belongs only to a genuine board-supported choice.
 Ply 0 is the untouched INITIAL POSITION, not the first move: describe the immediate threat already on the board.
 For every ply n > 0 copy the actual mover and SAN from positions[n], never positions[n+1]. Do not shift indices.
 Use no more than 8 visual cues in the entire script; plan explanations, not an arrow for every played move.
@@ -316,7 +328,7 @@ def _adc_session():
 
 def _llm_config(settings: Settings) -> dict:
     return {
-        'version': 2,
+        'version': 3,
         'prompt_sha256': hashlib.sha256(_SYSTEM_PROMPT.encode()).hexdigest(),
         'provider': settings.llm_provider,
         'model': settings.llm_model,
@@ -473,6 +485,11 @@ def _script_context(game: dict, settings: Settings) -> dict:
         'required_ply_sequence': list(range(len(game['positions']))),
         'initial_beat': 'ply 0 describes the untouched starting board; the first actual move is ply 1',
         'selected_opponent_threats': select_key_threats(game, settings.perspective),
+        'player_decisions': [
+            {'ply': position['ply'], 'pre_move_position': game['positions'][index - 1]}
+            for index, position in enumerate(game['positions'])
+            if index and chess.Board(position['before_fen']).turn == (settings.perspective == 'white')
+        ],
         'game': game,
     }
 

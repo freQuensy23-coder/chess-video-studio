@@ -214,6 +214,9 @@ class Renderer:
         if not isinstance(timeline, dict):
             raise TypeError("timeline must be a dictionary")
         self.presenter = _validate_presenter(timeline.get("presenter", "male"))
+        self.show_presenter = timeline.get("show_presenter", True)
+        if not isinstance(self.show_presenter, bool):
+            raise ValueError("show_presenter must be a boolean")
         self.timeline = copy.deepcopy(timeline)
         if timeline.get("version", 1) != 1:
             raise ValueError("Unsupported timeline version")
@@ -938,13 +941,14 @@ class Renderer:
             draw.text((self.width / 2, y + padding * 0.4), result, anchor="mm", fill=(236, 254, 246, 255), font=font)
         output = Image.new("RGB", (self.width, self.height), (8, 17, 27))
         output.paste(panel.convert("RGB"), (0, 0))
-        face = self._face_panel(time)
-        output.paste(face.convert("RGB"), (0, self.face_y))
-        reaction = self._reaction(time)
-        if reaction:
-            extra = round(self.height * 0.12 * reaction)
-            enlarged = face.resize((self.width, self.height - self.face_y + extra), Image.Resampling.LANCZOS)
-            output.paste(enlarged.convert("RGB"), (0, self.face_y - extra))
+        if self.show_presenter:
+            face = self._face_panel(time)
+            output.paste(face.convert("RGB"), (0, self.face_y))
+            reaction = self._reaction(time)
+            if reaction:
+                extra = round(self.height * 0.12 * reaction)
+                enlarged = face.resize((self.width, self.height - self.face_y + extra), Image.Resampling.LANCZOS)
+                output.paste(enlarged.convert("RGB"), (0, self.face_y - extra))
         return output
 
     def close(self) -> None:
