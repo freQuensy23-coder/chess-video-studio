@@ -30,9 +30,17 @@ Set `PRESENTER=female` in `.env` as the default for generation. `showcase` uses 
 
 Presenter selection is independent of the player's chess color and board orientation.
 
+For a clean boardplate with a blank lower panel, use `render --no-presenter`, or set the timeline's
+`show_presenter` boolean to `false`. Dimensions, audio, board animation and result overlays stay unchanged;
+the SVG rig and final presenter reaction are omitted. Existing timelines default to showing the presenter.
+
 ## Generation model
 
 The PGN is replayed by python-chess. The LLM receives actual positions and moves; its structured script must reference valid plies and exact spoken phrases. The board follows the PGN, never model-generated moves. ElevenLabs returns actual speech plus character timing. Moves, annotations, zooms, and expressions are scheduled from those timestamps, not estimated reading speed.
+
+For selected own moves, script generation receives the preceding position and asks for concern, a candidate,
+an opponent reply and a supported consequence before the spoken commitment anchors the move. This is
+PGN-grounded narration, not an autonomous playing agent; prompt instructions do not prove hypothetical analysis.
 
 A finished job contains the original PGN, parsed game, editable script, transcript, speech alignment, timeline, and H.264/AAC MP4. An existing script can be edited and reused. Existing timelines can be rendered again without provider calls. Provider and alignment failures stop generation instead of substituting fake speech or fabricated timing.
 

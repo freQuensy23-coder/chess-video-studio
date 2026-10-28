@@ -24,6 +24,7 @@ def parser() -> argparse.ArgumentParser:
     render = commands.add_parser("render", help="Render an existing aligned timeline without provider calls")
     render.add_argument("--timeline", type=Path, required=True)
     render.add_argument("--output", type=Path, required=True)
+    render.add_argument("--no-presenter", dest="show_presenter", action="store_false", default=None)
     showcase = commands.add_parser("showcase", help="Render the complete animation catalogue without API keys")
     showcase.add_argument("--output", type=Path, required=True)
     for command in [generate, script, render, showcase]:
@@ -58,6 +59,8 @@ def main() -> int:
             timeline = json.loads(arguments.timeline.read_text(encoding="utf-8"))
             if arguments.presenter is not None:
                 timeline["presenter"] = arguments.presenter
+            if arguments.show_presenter is not None:
+                timeline["show_presenter"] = arguments.show_presenter
             path = render_video(timeline, arguments.output)
             print(json.dumps({"video_path": str(path)}))
         elif arguments.command in {"generate", "script"}:
